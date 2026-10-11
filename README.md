@@ -9,12 +9,16 @@ blocker** on your PC.
 
 
 I built this for personal then decided to share maybe it can help someone out.
-Im paying for 1Gbps Download/Upload speeds to my internet provider but because my router is far from my computer i cannot run a ethernet cable. So i was using wifi , and i get decend 250Mbps speed but latency and ping are not reliable so i decided to get a CPL Kit where i also get 200-300Mbps speeds but with much lower latency and no fluctuations.
+Im paying for 1Gbps Download/Upload speeds to my internet provider but because my router is far from my computer i cannot run a ethernet cable.
+So i was using wifi , and i get decend 250Mbps speed but latency and ping are not reliable so i decided to get a CPL Kit where i also get 200-300Mbps speeds but with much lower latency and no fluctuations.
 Then i got the idea , what if i can use both at the same time ?
 Well there was an app called Speedify which worked very well but it was paid and expensive for me.
-So i decided to build Bond. You can use bond with any vps you like. Free or paid . Just make sure you get a VPS with equal or bigger internet bandwith than your connections combined! 
+So i decided to build Bond. 
+You can use bond with any vps you like. Free or paid . 
+Just make sure you get a VPS with equal or bigger internet bandwith than your connections combined! 
 Also make sure the vps you are getting is close to you, otherwise latency might be a problem.
-Im using it on a oracle free vps running Ubuntu 24.04 with VM.Standard.A1.Flex shape, 2Cores, 12Gb ram , 40Gb storage and im getting 500-550Mbps speeds.
+Im using it on a oracle free vps running Ubuntu 24.04 ,
+with VM.Standard.A1.Flex shape, 2Cores, 12Gb ram , 40Gb storage and im getting 500-550Mbps speeds.
 
 ```
  Your PC ── WiFi ─────┐
