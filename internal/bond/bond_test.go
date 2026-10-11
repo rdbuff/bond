@@ -183,3 +183,36 @@ func TestEngineLoopback(t *testing.T) {
 	}
 	t.Logf("path usage %v, server->client ctrl msgs %d", used, n)
 }
+
+// A path whose measured delay is far above the others (e.g. a congested
+// mobile link with a stale, low best-case RTT) must not be used while the
+// fast path can still deliver sooner: in-order delivery would make every
+// packet on the fast path wait for it.
+func TestSchedulerAvoidsLaggyPath(t *testing.T) {
+	e := NewEngine(1, nil, nil, 100*time.Millisecond)
+	now := Now()
+	fast, laggy := e.Paths[0], e.Paths[1]
+	for _, p := range []*Path{fast, laggy} {
+		p.Out = &memOut{}
+		p.lastRx.Store(now)
+	}
+	fast.minRTT, fast.srtt = int64(10*time.Millisecond), int64(20*time.Millisecond)
+	laggy.minRTT, laggy.srtt = int64(25*time.Millisecond), int64(200*time.Millisecond)
+
+	used := map[uint8]int{}
+	for i := 0; i < 500; i++ {
+		p := e.pick(1444, now)
+		used[p.ID]++
+		p.txBytes += 1444 // as SealData would
+	}
+	if used[1] != 0 {
+		t.Fatalf("laggy path got %d of 500 packets while the fast path was barely queued", used[1])
+	}
+
+	// Once the fast path is genuinely more backed up than the laggy one is
+	// slow, the laggy path helps out.
+	fast.txBytes += 2 << 20
+	if p := e.pick(1444, now); p != laggy {
+		t.Fatal("laggy path not used when the fast path is heavily queued")
+	}
+}

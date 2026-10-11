@@ -94,7 +94,13 @@ func (p *Path) Alive(now int64) bool {
 }
 
 // cost estimates when a packet of the given size, sent now, would arrive:
-// queueing delay on the path plus its one-way delay.
+// the path's one-way delay including its queue. Two estimates are combined:
+// one from bytes in flight (reacts instantly to what we just sent) and the
+// measured smoothed RTT (catches paths, like mobile links, whose real delay
+// is far above their best-case RTT). Since packets are delivered in order,
+// a path that is much slower than the others holds back everything sent
+// after it, so it must only be used once the faster paths are equally
+// backed up.
 func (p *Path) cost(size int, now int64) float64 {
 	inflight := p.txBytes - p.ackCum
 	if inflight > 0 {
@@ -116,7 +122,11 @@ func (p *Path) cost(size int, now int64) float64 {
 	if q < 0 {
 		q = 0
 	}
-	return q + float64(p.minRTT)/2 + float64(size)/rate*1e9
+	owd := q + float64(p.minRTT)/2
+	if measured := float64(p.srtt) / 2; measured > owd {
+		owd = measured
+	}
+	return owd + float64(size)/rate*1e9
 }
 
 func (p *Path) rttSample(rtt, now int64) {

@@ -111,6 +111,7 @@ type Client struct {
 	netMu      sync.Mutex
 	netCleanup func()
 	firewalled bool
+	v6Blocked  bool // IPv6 outside the tunnel is blocked (Bond carries IPv4 only)
 	routed     bool
 
 	statusMu  sync.Mutex
@@ -243,6 +244,10 @@ func (c *Client) Stop() {
 		c.firewalled = false
 	}
 	c.wg.Wait()
+	if c.v6Blocked {
+		firewall.UnblockIPv6()
+		c.v6Blocked = false
+	}
 	for _, s := range c.socks { // a re-bind may have raced with the first sweep
 		if uc := s.conn.Swap(nil); uc != nil {
 			uc.Close()
@@ -476,6 +481,12 @@ func (c *Client) sessionLoop() {
 					c.logf("%v", err)
 				} else {
 					c.routed = true
+					// IPv4 now goes through the tunnel; keep IPv6 from going around it.
+					if err := firewall.BlockIPv6(); err != nil {
+						c.logf("IPv6 leak protection: %v", err)
+					} else {
+						c.v6Blocked = true
+					}
 				}
 			}
 			c.netMu.Unlock()
