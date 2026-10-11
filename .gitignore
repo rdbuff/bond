@@ -1,0 +1,15 @@
+# Build output
+/dist/
+/bin/
+*.exe
+*.dll
+*.pprof
+*.log
+
+# Private: never commit keys or local settings
+*.key
+key
+bond.json
+
+# The ready-to-run installer is committed on purpose
+!/installer.exe

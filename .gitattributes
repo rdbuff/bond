@@ -1,0 +1,10 @@
+* text=auto
+# Files that run on the Linux relay must keep LF line endings, even when the
+# release is built on Windows.
+deploy/** text eol=lf
+*.sh text eol=lf
+# Binaries
+*.exe binary
+*.syso binary
+*.png binary
+*.ico binary

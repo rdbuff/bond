@@ -1,0 +1,619 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Bond</title>
+<style>
+  :root {
+    --bg: #0b1120;
+    --card: #131c2e;
+    --card-2: #1a2438;
+    --line: #24314a;
+    --text: #e6edf7;
+    --muted: #8a98b0;
+    --faint: #5b6a85;
+    --on: #2dd4bf;
+    --on-glow: rgba(45, 212, 191, .35);
+    --warn: #fbbf24;
+    --bad: #f87171;
+    --p0: #2dd4bf;
+    --p1: #818cf8;
+    --p2: #f472b6;
+    --p3: #fbbf24;
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  html, body { height: 100%; }
+  body {
+    background: radial-gradient(120% 60% at 50% 0%, #15213a 0%, var(--bg) 60%);
+    color: var(--text);
+    font: 14px/1.4 "Segoe UI Variable Text", "Segoe UI", system-ui, sans-serif;
+    user-select: none;
+    overflow: hidden;
+    display: flex; flex-direction: column;
+    padding: 18px 18px 14px;
+    gap: 14px;
+  }
+  header { display: flex; align-items: center; gap: 10px; }
+  header svg { width: 28px; height: 28px; flex: none; }
+  header h1 { font-size: 17px; font-weight: 600; letter-spacing: .2px; }
+  header .relay { margin-left: auto; color: var(--faint); font-size: 12px; }
+
+  /* Power switch */
+  .hero {
+    display: flex; flex-direction: column; align-items: center; gap: 12px;
+    padding: 18px 0 6px;
+  }
+  .switch {
+    position: relative; width: 132px; height: 70px; border-radius: 35px;
+    background: #22304a; border: 1px solid #2c3b58;
+    cursor: pointer; outline: none;
+    transition: background .25s, box-shadow .25s, border-color .25s;
+  }
+  .switch .knob {
+    position: absolute; top: 6px; left: 6px; width: 56px; height: 56px; border-radius: 50%;
+    background: #cbd5e1; box-shadow: 0 3px 10px rgba(0,0,0,.4);
+    transition: left .25s cubic-bezier(.3,.7,.4,1), background .25s;
+    display: grid; place-items: center;
+  }
+  .switch .knob svg { width: 24px; height: 24px; stroke: #475569; transition: stroke .25s; }
+  .switch[data-on="true"] { background: var(--on); border-color: var(--on); box-shadow: 0 0 28px var(--on-glow); }
+  .switch[data-on="true"] .knob { left: 68px; background: #fff; }
+  .switch[data-on="true"] .knob svg { stroke: #0f766e; }
+  .switch[data-busy="true"] { cursor: progress; }
+  .switch[data-busy="true"] .knob { animation: pulse 1s ease-in-out infinite; }
+  .switch:focus-visible { box-shadow: 0 0 0 3px #60a5fa; }
+  @keyframes pulse { 50% { transform: scale(.88); } }
+
+  .state { font-size: 20px; font-weight: 600; display: flex; align-items: center; gap: 8px; }
+  .dot { width: 9px; height: 9px; border-radius: 50%; background: var(--faint); flex: none; }
+  .dot.on { background: var(--on); box-shadow: 0 0 8px var(--on); }
+  .dot.wait { background: var(--warn); }
+  .dot.bad { background: var(--bad); }
+  .sub { color: var(--muted); font-size: 12.5px; min-height: 18px; text-align: center; padding: 0 8px; }
+  .sub.error { color: var(--bad); }
+
+  .card {
+    background: var(--card); border: 1px solid var(--line); border-radius: 14px; padding: 14px 16px;
+  }
+  .speeds { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+  .speed .label { color: var(--muted); font-size: 12px; display: flex; align-items: center; gap: 5px; }
+  .speed .value { font-size: 30px; font-weight: 600; font-variant-numeric: tabular-nums; letter-spacing: -.5px; }
+  .speed .unit { font-size: 13px; color: var(--muted); font-weight: 400; margin-left: 3px; }
+  canvas { width: 100%; height: 64px; display: block; margin-top: 8px; }
+
+  .paths { display: flex; flex-direction: column; gap: 10px; }
+  .path { display: grid; grid-template-columns: auto 1fr auto; gap: 2px 10px; align-items: center; }
+  .path .swatch { width: 10px; height: 10px; border-radius: 3px; grid-row: span 2; }
+  .path .name { font-weight: 600; }
+  .path .name small { color: var(--faint); font-weight: 400; margin-left: 6px; font-size: 11.5px; }
+  .path .meta { color: var(--muted); font-size: 12px; font-variant-numeric: tabular-nums; }
+  .path .pill {
+    font-size: 11px; padding: 2px 8px; border-radius: 99px; background: var(--card-2); color: var(--muted);
+    grid-row: span 2; justify-self: end;
+  }
+  .path .pill.up { color: var(--on); background: rgba(45,212,191,.12); }
+  .path .pill.down { color: var(--bad); background: rgba(248,113,113,.12); }
+  .bar { height: 4px; border-radius: 2px; background: var(--card-2); overflow: hidden; grid-column: 2 / 4; margin-top: 4px; }
+  .bar i { display: block; height: 100%; width: 0; border-radius: 2px; transition: width .6s ease; }
+  .empty { color: var(--faint); font-size: 12.5px; text-align: center; padding: 6px 0; }
+
+  footer { margin-top: auto; color: var(--faint); font-size: 11.5px; display: flex; justify-content: space-between; gap: 8px; }
+  footer span:last-child { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 62%; text-align: right; }
+
+  /* Close / minimize dialog */
+  .backdrop {
+    position: fixed; inset: 0; z-index: 50; background: rgba(3, 7, 18, .72);
+    display: grid; place-items: center; padding: 18px;
+    opacity: 0; visibility: hidden; transition: opacity .15s, visibility .15s;
+  }
+  .backdrop.open { opacity: 1; visibility: visible; }
+  .dialog {
+    width: 100%; background: var(--card); border: 1px solid var(--line); border-radius: 16px;
+    padding: 20px 18px 16px; box-shadow: 0 20px 50px rgba(0,0,0,.5);
+    transform: translateY(8px) scale(.98); transition: transform .15s;
+  }
+  .backdrop.open .dialog { transform: none; }
+  .dialog h2 { font-size: 16px; font-weight: 600; margin-bottom: 6px; }
+  .dialog p { color: var(--muted); font-size: 13px; margin-bottom: 16px; }
+  .choices { display: flex; flex-direction: column; gap: 8px; }
+  .choice {
+    display: flex; align-items: center; gap: 12px; width: 100%; text-align: left; cursor: pointer;
+    background: var(--card-2); border: 1px solid var(--line); border-radius: 11px; padding: 11px 12px;
+    color: var(--text); font: 13.5px "Segoe UI", system-ui, sans-serif;
+  }
+  .choice:hover { border-color: #3b4c6e; }
+  .choice:focus-visible { outline: 2px solid #60a5fa; }
+  .choice.primary { border-color: rgba(45,212,191,.5); background: rgba(45,212,191,.08); }
+  .choice svg { width: 20px; height: 20px; flex: none; color: var(--muted); }
+  .choice.primary svg { color: var(--on); }
+  .choice b { display: block; font-weight: 600; }
+  .choice small { color: var(--muted); font-size: 12px; }
+  .dialog-foot { display: flex; align-items: center; justify-content: space-between; margin-top: 14px; gap: 8px; }
+  .dialog-foot label { display: flex; align-items: center; gap: 8px; color: var(--muted); font-size: 12.5px; cursor: pointer; }
+  .dialog-foot input { accent-color: var(--on); width: 15px; height: 15px; }
+  .btn.small { padding: 7px 14px; font-size: 13px; }
+
+  select {
+    background: var(--card); border: 1px solid var(--line); border-radius: 9px; color: var(--text);
+    font: 13.5px "Segoe UI", system-ui, sans-serif; padding: 8px 10px; outline: none; width: 100%;
+  }
+  select:focus { border-color: #3b82f6; }
+  .row2 { display: grid; grid-template-columns: auto 1fr; align-items: center; gap: 8px 12px; }
+  .row2 span { font-size: 13px; }
+
+  /* Ad blocker row */
+  .adblock { display: flex; align-items: center; gap: 12px; padding: 12px 14px 12px 16px; }
+  .adblock .ab-icon { width: 34px; height: 34px; border-radius: 10px; display: grid; place-items: center; background: var(--card-2); color: var(--faint); flex: none; transition: color .25s, background .25s; }
+  .adblock .ab-icon svg { width: 18px; height: 18px; }
+  .adblock[data-on="true"] .ab-icon { color: var(--on); background: rgba(45,212,191,.12); }
+  .adblock .ab-text { flex: 1; min-width: 0; }
+  .adblock .ab-title { font-weight: 600; }
+  .adblock .ab-sub { color: var(--muted); font-size: 12px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .adblock .ab-sub.error { color: var(--bad); }
+  .mini-switch {
+    position: relative; width: 44px; height: 24px; border-radius: 12px; flex: none; cursor: pointer;
+    background: #22304a; border: 1px solid #2c3b58; transition: background .2s, border-color .2s;
+  }
+  .mini-switch::after {
+    content: ""; position: absolute; top: 2px; left: 2px; width: 18px; height: 18px; border-radius: 50%;
+    background: #cbd5e1; transition: left .2s cubic-bezier(.3,.7,.4,1), background .2s;
+  }
+  .mini-switch[aria-checked="true"] { background: var(--on); border-color: var(--on); }
+  .mini-switch[aria-checked="true"]::after { left: 22px; background: #fff; }
+  .mini-switch:focus-visible { outline: 2px solid #60a5fa; outline-offset: 2px; }
+
+  .icon-btn {
+    width: 32px; height: 32px; border-radius: 9px; border: 1px solid transparent; background: transparent;
+    color: var(--muted); cursor: pointer; display: grid; place-items: center; margin-left: 4px;
+  }
+  .icon-btn:hover { background: var(--card-2); color: var(--text); border-color: var(--line); }
+  .icon-btn:focus-visible { outline: 2px solid #60a5fa; }
+  .icon-btn svg { width: 18px; height: 18px; }
+
+  /* Settings panel */
+  .panel {
+    position: fixed; inset: 0; background: var(--bg); padding: 18px; display: flex; flex-direction: column; gap: 14px;
+    transform: translateX(100%); transition: transform .25s cubic-bezier(.3,.7,.4,1); visibility: hidden;
+    overflow-y: auto; user-select: text;
+  }
+  .panel.open { transform: none; visibility: visible; }
+  .panel header h1 { font-size: 17px; }
+  .field { display: flex; flex-direction: column; gap: 6px; }
+  .field label { font-size: 12.5px; color: var(--muted); font-weight: 600; }
+  .field .hint { font-size: 11.5px; color: var(--faint); }
+  .field input[type=text], .field textarea {
+    background: var(--card); border: 1px solid var(--line); border-radius: 9px; color: var(--text);
+    font: 13.5px "Segoe UI", system-ui, sans-serif; padding: 9px 11px; outline: none; width: 100%;
+  }
+  .field textarea { font-family: Consolas, monospace; font-size: 12px; resize: none; height: 54px; }
+  .field input:focus, .field textarea:focus { border-color: #3b82f6; }
+  .checks { display: flex; flex-direction: column; gap: 2px; background: var(--card); border: 1px solid var(--line); border-radius: 9px; padding: 6px; }
+  .check { display: flex; align-items: center; gap: 10px; padding: 7px 8px; border-radius: 7px; cursor: pointer; }
+  .check:hover { background: var(--card-2); }
+  .check input { accent-color: var(--on); width: 16px; height: 16px; }
+  .check small { color: var(--faint); margin-left: auto; font-size: 11.5px; }
+  .actions { display: flex; gap: 8px; justify-content: flex-end; margin-top: auto; padding-top: 4px; }
+  .btn {
+    border-radius: 9px; padding: 9px 18px; font: 600 13.5px "Segoe UI", system-ui, sans-serif; cursor: pointer;
+    border: 1px solid var(--line); background: var(--card); color: var(--text);
+  }
+  .btn.primary { background: var(--on); border-color: var(--on); color: #042f2e; }
+  .btn:disabled { opacity: .6; cursor: progress; }
+  .form-error { color: var(--bad); font-size: 12.5px; min-height: 18px; }
+  .note { font-size: 11.5px; color: var(--faint); }
+</style>
+</head>
+<body>
+  <header>
+    <svg viewBox="0 0 256 256" aria-hidden="true">
+      <rect width="256" height="256" rx="56" fill="#1e2a4b"/>
+      <path d="M48 78Q110 78 146 128" stroke="#2dd4bf" stroke-width="22" stroke-linecap="round" fill="none"/>
+      <path d="M48 178Q110 178 146 128" stroke="#818cf8" stroke-width="22" stroke-linecap="round" fill="none"/>
+      <path d="M146 128H212" stroke="#f0f9ff" stroke-width="27" stroke-linecap="round"/>
+    </svg>
+    <h1>Bond</h1>
+    <span class="relay" id="relay"></span>
+    <button class="icon-btn" id="openSettings" aria-label="Settings" title="Settings">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 1 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 1 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 1 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 1 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>
+    </button>
+  </header>
+
+  <section class="hero">
+    <button class="switch" id="switch" data-on="false" aria-label="Bonding on/off" role="switch" aria-checked="false">
+      <span class="knob">
+        <svg viewBox="0 0 24 24" fill="none" stroke-width="2.4" stroke-linecap="round"><path d="M12 3v8"/><path d="M6.3 7.2a8 8 0 1 0 11.4 0"/></svg>
+      </span>
+    </button>
+    <div class="state"><span class="dot" id="dot"></span><span id="stateText">Off</span></div>
+    <div class="sub" id="sub">Turn on to combine WiFi and Ethernet</div>
+  </section>
+
+  <section class="card adblock" id="adblock" data-on="false">
+    <span class="ab-icon">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/><path d="M9 12l2 2 4-4"/></svg>
+    </span>
+    <div class="ab-text">
+      <div class="ab-title">Ad blocker</div>
+      <div class="ab-sub" id="abSub">Blocks ads and trackers in every app</div>
+    </div>
+    <button class="mini-switch" id="abSwitch" role="switch" aria-checked="false" aria-label="Ad blocker on/off"></button>
+  </section>
+
+  <section class="card">
+    <div class="speeds">
+      <div class="speed">
+        <div class="label"><span style="color:var(--on)">&#8595;</span> Download</div>
+        <div class="value"><span id="rx">0</span><span class="unit">Mbps</span></div>
+      </div>
+      <div class="speed">
+        <div class="label"><span style="color:var(--p1)">&#8593;</span> Upload</div>
+        <div class="value"><span id="tx">0</span><span class="unit">Mbps</span></div>
+      </div>
+    </div>
+    <canvas id="chart"></canvas>
+  </section>
+
+  <section class="card paths" id="paths">
+    <div class="empty">Connections appear here when Bond is on</div>
+  </section>
+
+  <footer><span id="uptime"></span><span id="msg"></span></footer>
+
+  <section class="panel" id="panel" aria-label="Settings">
+    <header>
+      <button class="icon-btn" id="closeSettings" aria-label="Back" title="Back" style="margin-left:-6px">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M15 18l-6-6 6-6"/></svg>
+      </button>
+      <h1>Settings</h1>
+    </header>
+
+    <div class="field">
+      <label for="server">Relay server</label>
+      <input type="text" id="server" spellcheck="false" placeholder="203.0.113.10:51820 or vpn.example.com">
+      <span class="hint">IP address or hostname of your VPS. Port defaults to 51820.</span>
+    </div>
+
+    <div class="field">
+      <label for="key">Server key</label>
+      <textarea id="key" spellcheck="false" placeholder=""></textarea>
+      <span class="hint" id="keyHint"></span>
+    </div>
+
+    <div class="field">
+      <label>Connections to bond</label>
+      <div class="checks" id="ifaces"></div>
+    </div>
+
+    <div class="field">
+      <label for="dns">DNS servers</label>
+      <input type="text" id="dns" spellcheck="false" placeholder="1.1.1.1, 8.8.8.8">
+    </div>
+
+    <div class="field">
+      <label>Background &amp; startup</label>
+      <div class="checks">
+        <div class="row2" style="padding: 6px 8px 8px">
+          <span>When I click <b>X</b></span>
+          <select id="onClose" aria-label="When I click X">
+            <option value="ask">Ask every time</option>
+            <option value="tray">Minimize to the system tray</option>
+            <option value="quit">Quit Bond</option>
+          </select>
+          <span>When I click <b>&#8211;</b></span>
+          <select id="onMinimize" aria-label="When I click minimize">
+            <option value="ask">Ask every time</option>
+            <option value="tray">Minimize to the system tray</option>
+            <option value="taskbar">Minimize to the taskbar</option>
+          </select>
+        </div>
+        <label class="check"><input type="checkbox" id="autoStart">Start Bond when I sign in to Windows</label>
+        <label class="check"><input type="checkbox" id="autoConnect">Turn bonding on when Bond starts</label>
+      </div>
+      <span class="hint">In the tray, Bond keeps bonding and blocking ads in the background. Right-click the tray icon to switch things or quit. When started with Windows, Bond opens straight into the tray.</span>
+    </div>
+
+    <div class="field">
+      <label>Kill switch</label>
+      <div class="checks">
+        <label class="check"><input type="checkbox" id="killSwitch">Block the internet unless it goes through Bond</label>
+      </div>
+      <span class="hint">While Bond is on (also while connecting or if the relay drops), nothing can leak outside the encrypted tunnel. Devices on your local network are blocked too. Turning Bond off restores everything.</span>
+    </div>
+
+    <div class="field">
+      <label for="allow">Ad blocker: always allow</label>
+      <textarea id="allow" spellcheck="false" placeholder="one domain per line, e.g. example.com"></textarea>
+      <span class="hint">Use this if the ad blocker breaks a site. Subdomains are allowed too.</span>
+    </div>
+
+    <div class="form-error" id="formError"></div>
+    <div class="actions">
+      <button class="btn" id="cancelSettings">Cancel</button>
+      <button class="btn primary" id="saveBtn">Save</button>
+    </div>
+    <p class="note">If Bond is on, saving reconnects it with the new settings.</p>
+  </section>
+
+  <div class="backdrop" id="askBackdrop">
+    <div class="dialog" role="dialog" aria-modal="true" aria-labelledby="askTitle" aria-describedby="askText">
+      <h2 id="askTitle"></h2>
+      <p id="askText"></p>
+      <div class="choices" id="askChoices"></div>
+      <div class="dialog-foot">
+        <label><input type="checkbox" id="askRemember">Don't ask again</label>
+        <button class="btn small" id="askCancel">Cancel</button>
+      </div>
+    </div>
+  </div>
+
+<script>
+const $ = id => document.getElementById(id);
+const colors = ['--p0', '--p1', '--p2', '--p3'].map(v => getComputedStyle(document.documentElement).getPropertyValue(v).trim());
+const histRx = new Array(60).fill(0), histTx = new Array(60).fill(0);
+let current = { state: 'off' };
+let pending = false;
+
+function fmt(v) { return v >= 100 ? v.toFixed(0) : v >= 10 ? v.toFixed(1) : v.toFixed(2).replace(/\.?0+$/, '') || '0'; }
+function dur(ms) {
+  const s = Math.floor(ms / 1000), h = Math.floor(s / 3600), m = Math.floor(s % 3600 / 60);
+  return h ? `${h}h ${m}m` : m ? `${m}m ${s % 60}s` : `${s}s`;
+}
+function esc(s) { return String(s).replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c])); }
+
+$('switch').addEventListener('click', async () => {
+  const st = current.state;
+  if (current.needsSetup && st === 'off') { openSettings(); return; }
+  if (pending || st === 'starting' || st === 'stopping') return;
+  pending = true;
+  const want = st === 'off';
+  render({ ...current, state: want ? 'starting' : 'stopping', error: '' });
+  try { await window.setEnabled(want); } finally { pending = false; }
+  window.getStatus().then(render).catch(() => {});
+});
+
+function render(s) {
+  current = s;
+  const t = s.tunnel;
+  const on = s.state !== 'off' && s.state !== 'stopping';
+  const busy = ['starting', 'stopping', 'connecting'].includes(s.state);
+  const sw = $('switch');
+  sw.dataset.on = on; sw.dataset.busy = busy; sw.setAttribute('aria-checked', on);
+
+  const labels = { off: 'Off', starting: 'Starting…', connecting: 'Connecting…', connected: 'Connected', stopping: 'Turning off…' };
+  $('stateText').textContent = labels[s.state] || s.state;
+  $('dot').className = 'dot ' + (s.state === 'connected' ? 'on' : busy ? 'wait' : s.error ? 'bad' : '');
+
+  const sub = $('sub');
+  sub.classList.toggle('error', !!s.error);
+  if (s.error) sub.textContent = s.error;
+  else if (s.state === 'connected' && t) {
+    const up = t.paths.filter(p => p.up);
+    sub.textContent = up.length > 1 ? `Bonding ${up.map(p => p.name).join(' + ')}` : `Using ${up.map(p => p.name).join('')} only`;
+  } else if (s.state === 'connecting' || s.state === 'starting') {
+    sub.textContent = s.killSwitch ? 'Reaching the relay… (kill switch is holding traffic)' : 'Reaching the relay…';
+  } else if (s.state === 'off' && s.needsSetup) sub.textContent = 'Set up your relay server in Settings to start';
+  else if (s.state === 'off') sub.textContent = 'Turn on to combine WiFi and Ethernet';
+  else sub.textContent = '';
+
+  $('relay').textContent = t ? `relay ${t.relay}` : '';
+  const rx = t ? t.rxMbps : 0, tx = t ? t.txMbps : 0;
+  $('rx').textContent = fmt(rx); $('tx').textContent = fmt(tx);
+  $('uptime').textContent = s.state === 'connected' && t && t.since ? `Connected for ${dur(Date.now() - t.since)}` : '';
+  $('msg').textContent = t && s.state !== 'connected' ? (t.message || '') : '';
+  $('msg').title = $('msg').textContent;
+
+  renderAdBlock(s.adblock, s.state === 'connected');
+
+  const box = $('paths');
+  if (!t || !t.paths.length) {
+    box.innerHTML = '<div class="empty">Connections appear here when Bond is on</div>';
+  } else {
+    const total = t.paths.reduce((a, p) => a + p.rxMbps + p.txMbps, 0);
+    box.innerHTML = t.paths.map((p, i) => {
+      const c = colors[i % colors.length];
+      const share = total > 0.05 ? (p.rxMbps + p.txMbps) / total * 100 : 0;
+      const state = p.up ? 'up' : p.localIP ? 'down' : '';
+      const label = p.up ? 'Active' : p.localIP ? 'Waiting' : 'Unavailable';
+      const meta = p.up ? `&#8595; ${fmt(p.rxMbps)} &nbsp;&#8593; ${fmt(p.txMbps)} Mbps &nbsp;·&nbsp; ${p.rttMs.toFixed(0)} ms` : (p.localIP ? 'No answer on this connection yet' : 'Not connected');
+      return `<div class="path">
+        <span class="swatch" style="background:${c}"></span>
+        <span class="name">${esc(p.name)}<small>${esc(p.localIP || '')}</small></span>
+        <span class="pill ${state}">${label}</span>
+        <span class="meta">${meta}</span>
+        <div class="bar"><i style="width:${share.toFixed(1)}%;background:${c}"></i></div>
+      </div>`;
+    }).join('');
+  }
+}
+
+let abPending = false;
+function renderAdBlock(ab, connected) {
+  if (!ab || abPending) return;
+  $('adblock').dataset.on = ab.enabled;
+  $('abSwitch').setAttribute('aria-checked', ab.enabled);
+  const sub = $('abSub');
+  const n = ab.domains ? `${ab.domains.toLocaleString()} domains` : '';
+  let text = 'Blocks ads and trackers in every app', err = false;
+  if (ab.enabled) {
+    if (ab.loading && !ab.domains) text = 'Downloading blocklist…';
+    else if (ab.error && !ab.domains) { text = ab.error; err = true; }
+    else text = `${ab.blocked.toLocaleString()} blocked · ${n}`;
+  }
+  sub.textContent = text; sub.title = text;
+  sub.classList.toggle('error', err);
+}
+$('abSwitch').addEventListener('click', async () => {
+  if (abPending) return;
+  const want = $('abSwitch').getAttribute('aria-checked') !== 'true';
+  abPending = true;
+  $('abSwitch').setAttribute('aria-checked', want);
+  $('adblock').dataset.on = want;
+  try {
+    const err = await window.setAdBlock(want);
+    if (err) { $('abSub').textContent = err; $('abSub').classList.add('error'); }
+  } finally { abPending = false; }
+  window.getStatus().then(render).catch(() => {});
+});
+
+function draw() {
+  const cv = $('chart'), dpr = window.devicePixelRatio || 1;
+  const w = cv.clientWidth, h = cv.clientHeight;
+  if (cv.width !== w * dpr) { cv.width = w * dpr; cv.height = h * dpr; }
+  const g = cv.getContext('2d');
+  g.setTransform(dpr, 0, 0, dpr, 0, 0);
+  g.clearRect(0, 0, w, h);
+  const max = Math.max(10, ...histRx, ...histTx) * 1.15;
+  const line = (data, color, fill) => {
+    g.beginPath();
+    data.forEach((v, i) => {
+      const x = i / (data.length - 1) * w, y = h - v / max * (h - 2) - 1;
+      i ? g.lineTo(x, y) : g.moveTo(x, y);
+    });
+    g.strokeStyle = color; g.lineWidth = 1.6; g.lineJoin = 'round'; g.stroke();
+    if (fill) {
+      g.lineTo(w, h); g.lineTo(0, h); g.closePath();
+      const gr = g.createLinearGradient(0, 0, 0, h);
+      gr.addColorStop(0, color + '55'); gr.addColorStop(1, color + '00');
+      g.fillStyle = gr; g.fill();
+    }
+  };
+  g.strokeStyle = '#24314a'; g.lineWidth = 1;
+  g.beginPath(); g.moveTo(0, h - .5); g.lineTo(w, h - .5); g.stroke();
+  line(histTx, colors[1], false);
+  line(histRx, colors[0], true);
+  g.fillStyle = '#5b6a85'; g.font = '10.5px Segoe UI';
+  g.fillText(`${Math.round(max / 1.15)} Mbps`, 2, 11);
+}
+
+let setupShown = false; // open Settings once on a fresh install
+async function poll() {
+  try {
+    const s = await window.getStatus();
+    if (!pending) render(s);
+    if (s.needsSetup && !setupShown) { setupShown = true; openSettings(); }
+    const t = s.tunnel;
+    histRx.push(t ? t.rxMbps : 0); histRx.shift();
+    histTx.push(t ? t.txMbps : 0); histTx.shift();
+    draw();
+  } catch (e) { /* bindings not ready yet */ }
+}
+// Close / minimize dialog, opened by the app via askWindow('close' | 'minimize').
+const icons = {
+  tray: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M4 15h16v4a1 1 0 0 1-1 1H5a1 1 0 0 1-1-1z"/><path d="M12 4v8"/><path d="M8.5 8.5 12 12l3.5-3.5"/><circle cx="17" cy="17.5" r=".6" fill="currentColor"/></svg>',
+  quit: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><path d="M12 3v8"/><path d="M6.3 7.2a8 8 0 1 0 11.4 0"/></svg>',
+  taskbar: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="16" rx="2"/><path d="M3 16h18"/><path d="M10 18.2h4"/></svg>',
+};
+const asks = {
+  close: {
+    title: 'Close Bond?',
+    text: 'In the system tray, Bond keeps bonding and blocking ads in the background.',
+    choices: [
+      ['tray', 'Minimize to the system tray', 'Keep everything running'],
+      ['quit', 'Quit Bond', 'Turn bonding and the ad blocker off'],
+    ],
+  },
+  minimize: {
+    title: 'Minimize Bond to…',
+    text: 'Bond keeps running either way.',
+    choices: [
+      ['tray', 'System tray', 'Hidden next to the clock'],
+      ['taskbar', 'Taskbar', 'A normal minimized window'],
+    ],
+  },
+};
+let askKind = null;
+function askWindow(kind) {
+  const a = asks[kind];
+  if (!a) return;
+  askKind = kind;
+  $('askTitle').textContent = a.title;
+  $('askText').textContent = a.text;
+  $('askRemember').checked = false;
+  $('askChoices').innerHTML = a.choices.map(([act, label, sub], i) =>
+    `<button class="choice${i === 0 ? ' primary' : ''}" data-act="${act}">${icons[act]}<span><b>${label}</b><small>${sub}</small></span></button>`).join('');
+  $('askBackdrop').classList.add('open');
+  $('askChoices').querySelector('button').focus();
+}
+async function answerAsk(act) {
+  const kind = askKind;
+  if (!kind) return;
+  askKind = null;
+  $('askBackdrop').classList.remove('open');
+  const err = await window.windowAction(kind, act, act !== 'cancel' && $('askRemember').checked);
+  if (err) alert(err);
+}
+$('askChoices').addEventListener('click', e => {
+  const b = e.target.closest('button[data-act]');
+  if (b) answerAsk(b.dataset.act);
+});
+$('askCancel').addEventListener('click', () => answerAsk('cancel'));
+$('askBackdrop').addEventListener('click', e => { if (e.target === $('askBackdrop')) answerAsk('cancel'); });
+document.addEventListener('keydown', e => { if (askKind && e.key === 'Escape') { e.stopPropagation(); answerAsk('cancel'); } }, true);
+
+// Settings panel
+const panel = $('panel');
+async function openSettings() {
+  $('formError').textContent = '';
+  const s = await window.getSettings();
+  $('server').value = s.server;
+  $('dns').value = s.dns;
+  $('allow').value = s.allow || '';
+  $('killSwitch').checked = !!s.killSwitch;
+  $('onClose').value = s.onClose || 'ask';
+  $('onMinimize').value = s.onMinimize || 'ask';
+  $('autoStart').checked = !!s.autoStart;
+  $('autoConnect').checked = !!s.autoConnect;
+  $('key').value = '';
+  $('key').placeholder = s.hasKey ? '•••••••• key saved — paste a new one to replace it' : 'Paste the key that install.sh printed on your server';
+  $('keyHint').textContent = s.hasKey
+    ? 'Only needed when switching to a server with a different key.'
+    : 'Required. Shown at the end of install.sh, or run: sudo cat /etc/bond/key';
+  $('ifaces').innerHTML = s.interfaces.length ? s.interfaces.map(i => `
+    <label class="check"><input type="checkbox" value="${esc(i.name)}" ${s.paths.includes(i.name) ? 'checked' : ''}>
+      ${esc(i.name)}<small>${i.ip ? esc(i.ip) : 'not connected'}</small></label>`).join('')
+    : '<div class="empty">No network connections found</div>';
+  panel.classList.add('open');
+  $('server').focus();
+}
+function closeSettings() { panel.classList.remove('open'); $('openSettings').focus(); }
+async function submitSettings() {
+  const btn = $('saveBtn');
+  btn.disabled = true;
+  $('formError').textContent = '';
+  try {
+    const err = await window.saveSettings({
+      server: $('server').value,
+      key: $('key').value,
+      dns: $('dns').value,
+      allow: $('allow').value,
+      killSwitch: $('killSwitch').checked,
+      onClose: $('onClose').value,
+      onMinimize: $('onMinimize').value,
+      autoStart: $('autoStart').checked,
+      autoConnect: $('autoConnect').checked,
+      paths: [...$('ifaces').querySelectorAll('input:checked')].map(c => c.value),
+    });
+    if (err) { $('formError').textContent = err; return; }
+    closeSettings();
+    poll();
+  } catch (e) {
+    $('formError').textContent = String(e);
+  } finally {
+    btn.disabled = false;
+  }
+}
+$('openSettings').addEventListener('click', openSettings);
+$('closeSettings').addEventListener('click', closeSettings);
+$('cancelSettings').addEventListener('click', closeSettings);
+$('saveBtn').addEventListener('click', submitSettings);
+document.addEventListener('keydown', e => {
+  if (!panel.classList.contains('open')) return;
+  if (e.key === 'Escape') closeSettings();
+  if (e.key === 'Enter' && e.target.tagName === 'INPUT') submitSettings();
+});
+
+setInterval(poll, 1000);
+window.addEventListener('load', () => { poll(); draw(); });
+</script>
+</body>
+</html>

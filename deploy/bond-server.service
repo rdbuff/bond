@@ -1,0 +1,14 @@
+[Unit]
+Description=Channel bonding relay
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+ExecStart=/usr/local/bin/bond-server -key /etc/bond/key
+ExecStartPost=/usr/local/sbin/bond-fw.sh
+Restart=always
+RestartSec=2
+LimitNOFILE=65536
+
+[Install]
+WantedBy=multi-user.target
