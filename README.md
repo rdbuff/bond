@@ -1,20 +1,25 @@
 # Bond
 
 **Use your WiFi and your Ethernet cable at the same time, for a faster
-internet connection on Windows. Just like Speedify but you use your own vps instead of their proprietary paid servers.
+internet connection on Windows.** Just like Speedify, but you use your own VPS
+instead of their proprietary paid servers.
+
 Normally Windows uses only one connection at a time. Bond splits your traffic
 across both and joins it back together on a small server you rent (a "VPS"),
-so one download can use the speed of both. It also includes an system wide **ad
+so one download can use the speed of both. It also includes a system-wide **ad
 blocker** on your PC.
-Are you limited by your ethernet port speed ? Maybe cable speed ? Using a CPL Kit ? You are not using what your internet provider gives you ? 
-Then Bond is for you. Combine Wifi and Ethernet for faster bandwith!
-Tested on oracle free tier vps running Ubuntu 24.04 ,
-with VM.Standard.A1.Flex shape, 2Cores, 12Gb ram , 40Gb storage.
+
+Are you limited by your Ethernet port speed? Maybe cable speed? Using a CPL
+(powerline) kit? Not getting what your internet provider gives you?
+Then Bond is for you. Combine WiFi and Ethernet for faster bandwidth!
+
+Tested on an Oracle free tier VPS running Ubuntu 24.04, with the
+VM.Standard.A1.Flex shape: 2 cores, 12 GB RAM, 40 GB storage.
 
 ```
- Your PC ─ WiFi (250Mbps)──────────┐
-                                   ├──▶  your vps server(250+300Mbps)  ──▶  internet (550Mbps)
- Your PC ─ Ethernet(300Mbps)───────┘
+ Your PC ─ WiFi (250 Mbps) ─────┐
+                                ├──▶  your VPS server (250+300 Mbps)  ──▶  internet (550 Mbps)
+ Your PC ─ Ethernet (300 Mbps) ─┘
 ```
 
 ---
@@ -25,8 +30,8 @@ You need:
 
 - A **Windows 10 or 11** PC with two internet connections (for example WiFi
   *and* an Ethernet cable).
-- A **VPS**: a small rented Linux server.Oracle Cloud has a free tier; Hetzner, DigitalOcean,
-  Vultr and others cost a few euros/dollars a month.
+- A **VPS**: a small rented Linux server. Oracle Cloud has a free tier;
+  Hetzner, DigitalOcean, Vultr and others cost a few euros/dollars a month.
 
   > 💡 **Want it free?** Follow **[FREEVPSGUIDE.md](FREEVPSGUIDE.md)**: a
   > click-by-click guide to a free Oracle Cloud server, ready for Bond. It
@@ -36,8 +41,8 @@ You need:
 
 1. Open **PowerShell** on your PC (press the Windows key, type `PowerShell`,
    press Enter).
-   
-3. Connect to your server. Replace the address with your server's IP
+
+2. Connect to your server. Replace the address with your server's IP
    address, and `ubuntu` with your server's username (your provider shows
    both):
 
@@ -49,14 +54,14 @@ You need:
    gave you a **key file** instead of a password (Oracle does), add it like
    this: `ssh -i C:\Users\you\Downloads\ssh-key.key ubuntu@203.0.113.10`
 
-4. Copy this whole line, paste it into the window (right-click pastes) and
+3. Copy this whole line, paste it into the window (right-click pastes) and
    press Enter:
 
    ```
    curl -fsSL -o bond.tar.gz https://github.com/rdbuff/bond/releases/latest/download/bond-server-linux.tar.gz && tar -xzf bond.tar.gz && sudo sh bond-server/install.sh
    ```
 
-5. When it finishes, it shows something like this. **Keep this window open**,
+4. When it finishes, it shows something like this. **Keep this window open**,
    you need these two values in Step 3:
 
    ```
@@ -64,7 +69,9 @@ You need:
      Relay server: 203.0.113.10
      Server key:   q5T0...long text...k8=
    ```
-Copy the relay server and Server key and paste them on a new notepad
+
+   Copy the **Relay server** and **Server key** and paste them into a new
+   Notepad file, so you have them ready.
 
 ### Step 2: Open port 51820 on your provider's website
 
@@ -102,25 +109,6 @@ your server's address.
 
 ---
 
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
 ## Something's not working?
 
 | Problem | What to do |
@@ -132,26 +120,11 @@ your server's address.
 | The internet is gone while Bond is on | If you enabled the **kill switch** in Settings, the internet is blocked until Bond connects. Switch Bond off to get it back. |
 | Not faster than before | Bond can't be faster than your two connections combined, or than the server's own internet speed. Choose a server close to you. |
 
-
 To uninstall: Windows Settings → Apps → **Bond** → Uninstall. To remove the
 relay from the server, run
 `sudo systemctl disable --now bond-server && sudo rm /usr/local/bin/bond-server`.
 
 ---
-
-
-
-
-
-
-
-
-
-
-
-
-
-
 
 ## For advanced users
 
