@@ -28,7 +28,10 @@ You need:
 - A **VPS**: a small rented Linux server.Oracle Cloud has a free tier; Hetzner, DigitalOcean,
   Vultr and others cost a few euros/dollars a month.
 
-  
+  > 💡 **Want it free?** Follow **[FREEVPSGUIDE.md](FREEVPSGUIDE.md)**: a
+  > click-by-click guide to a free Oracle Cloud server, ready for Bond. It
+  > replaces Steps 1 and 2 below.
+
 ### Step 1: Install the relay on your server
 
 1. Open **PowerShell** on your PC (press the Windows key, type `PowerShell`,
