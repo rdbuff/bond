@@ -25,6 +25,19 @@ const (
 	pingInterval     = int64(500 * time.Millisecond)
 	pathDeadAfter    = int64(3 * time.Second)
 	rateWindow       = int64(20 * time.Millisecond)
+
+	// Each path may only have cwnd bytes in flight. It starts small and
+	// grows by what the path delivers (like TCP slow start), so a path of
+	// unknown capacity, e.g. a phone's weak uplink, can't swallow a burst
+	// that then arrives seconds late and stalls the in-order stream.
+	initCwnd = 16 << 10
+	maxCwnd  = 64 << 20
+
+	// Paths more than 2x the best path's RTT plus lagSlack get no data, for
+	// benchMin doubling up to benchMax each time they are found laggy.
+	lagSlack = int64(30 * time.Millisecond)
+	benchMin = int64(5 * time.Second)
+	benchMax = int64(60 * time.Second)
 )
 
 type Buf [BufSize]byte
@@ -73,6 +86,10 @@ type Path struct {
 	rateAtUs    int64
 	fbHigh      uint32
 	fbRxPkts    uint32
+	cwnd        uint64 // bytes allowed in flight
+	benchUntil  int64  // no data before this (too laggy, see pick)
+	benchFor    int64
+	goodSince   int64
 
 	// Receiver side, guarded by Engine.rxMu.
 	rxValid   bool
@@ -101,7 +118,7 @@ func (p *Path) Alive(now int64) bool {
 // a path that is much slower than the others holds back everything sent
 // after it, so it must only be used once the faster paths are equally
 // backed up.
-func (p *Path) cost(size int, now int64) float64 {
+func (p *Path) cost(size int, now int64, bestSRTT int64) float64 {
 	inflight := p.txBytes - p.ackCum
 	if inflight > 0 {
 		lim := 4 * p.srtt
@@ -126,6 +143,20 @@ func (p *Path) cost(size int, now int64) float64 {
 	if measured := float64(p.srtt) / 2; measured > owd {
 		owd = measured
 	}
+	// Bytes beyond what the path has proven it can carry (cwnd per RTT) are
+	// expected to drain at that proven rate, so they add delay. This keeps an
+	// untested or weak path from being handed a large burst.
+	if over := inflight + uint64(size); over > p.cwnd {
+		rtt := float64(max(p.srtt, p.minRTT, int64(time.Millisecond)))
+		penalty := float64(over-p.cwnd) * rtt / float64(p.cwnd)
+		// A path already much laggier than the best one gets a
+		// proportionally smaller first burst: on a weak mobile uplink even
+		// a few dozen KB arrive hundreds of ms late.
+		if bestSRTT > 0 && p.srtt > bestSRTT {
+			penalty *= float64(p.srtt) / float64(bestSRTT)
+		}
+		owd += penalty
+	}
 	return owd + float64(size)/rate*1e9
 }
 
@@ -149,6 +180,9 @@ func (p *Path) onFeedback(high, rxPkts uint32, rxBytes uint64, delayUs uint32, r
 	if p.txSeq-high <= ringSize && (!p.ackValid || int32(high-p.ackSeq) > 0) {
 		rec := p.ring[high&ringMask]
 		p.rttSample(now-rec.t-int64(delayUs)*1000, now)
+		if rec.cum > p.ackCum {
+			p.cwnd = min(p.cwnd+(rec.cum-p.ackCum), maxCwnd)
+		}
 		p.ackValid, p.ackSeq, p.ackCum, p.ackProgress = true, high, rec.cum, now
 		if p.ackCum > p.txBytes { // stale record after a reset
 			p.ackCum = p.txBytes
@@ -166,7 +200,17 @@ func (p *Path) onFeedback(high, rxPkts uint32, rxBytes uint64, delayUs uint32, r
 		p.rateBytes, p.rateAtUs = rxBytes, remoteUs
 	case dt*1000 >= rateWindow:
 		sample := float64(rxBytes-p.rateBytes) / float64(dt) * 1e6
-		p.rate += (sample - p.rate) / 4
+		switch {
+		case sample > p.rate:
+			p.rate += (sample - p.rate) / 2
+		case p.txBytes-p.ackCum >= p.cwnd/4:
+			// Only a busy path that still delivered less is slower. While a
+			// path has little to send its samples just measure our own
+			// demand; letting those drag the estimate down made a fast path
+			// look congested at the start of the next transfer, which then
+			// went to a slow path instead.
+			p.rate += (sample - p.rate) / 8
+		}
 		p.rateBytes, p.rateAtUs = rxBytes, remoteUs
 	}
 }
@@ -222,24 +266,63 @@ type Engine struct {
 func NewEngine(sid uint32, tx, rx cipher.AEAD, reorderTimeout time.Duration) *Engine {
 	e := &Engine{SID: sid, tx: tx, rx: rx, RO: NewReorder(int64(reorderTimeout))}
 	for i := range e.Paths {
-		e.Paths[i] = &Path{ID: uint8(i), rate: 10e6}
+		e.Paths[i] = &Path{ID: uint8(i), rate: 10e6, cwnd: initCwnd}
 	}
 	return e
 }
 
 func (e *Engine) pick(size int, now int64) *Path {
-	var best *Path
-	bestCost := math.Inf(1)
+	var bestSRTT int64
+	for _, p := range e.Paths {
+		if p.Alive(now) {
+			p.mu.Lock()
+			if p.srtt > 0 && (bestSRTT == 0 || p.srtt < bestSRTT) {
+				bestSRTT = p.srtt
+			}
+			p.mu.Unlock()
+		}
+	}
+	// "Do no harm": since packets are delivered in order, a path much laggier
+	// than the best one stalls everything behind each packet it carries.
+	// Such a path gets no data (pings keep measuring it), and each time it
+	// turns out laggy again it sits out longer.
+	gate := 2*bestSRTT + lagSlack
+	var best, fallback *Path
+	bestCost, fallbackCost := math.Inf(1), math.Inf(1)
 	for _, p := range e.Paths {
 		if !p.Alive(now) {
 			continue
 		}
 		p.mu.Lock()
-		c := p.cost(size, now)
+		c := p.cost(size, now, bestSRTT)
+		usable := true
+		switch {
+		case bestSRTT > 0 && p.srtt > gate:
+			if now >= p.benchUntil {
+				p.benchFor = min(max(2*p.benchFor, benchMin), benchMax)
+				p.benchUntil = now + p.benchFor
+			}
+			p.goodSince = 0
+			usable = false
+		case now < p.benchUntil:
+			usable = false
+		default:
+			if p.goodSince == 0 {
+				p.goodSince = now
+			} else if now-p.goodSince > benchMax {
+				p.benchFor = 0 // well behaved for a while: forgive
+			}
+		}
 		p.mu.Unlock()
-		if c < bestCost {
+		if usable && c < bestCost {
 			best, bestCost = p, c
 		}
+		if c < fallbackCost {
+			fallback, fallbackCost = p, c
+		}
+	}
+	if best == nil {
+		return fallback // never black-hole traffic
 	}
 	return best
 }

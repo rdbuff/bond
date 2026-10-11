@@ -197,6 +197,7 @@ func TestSchedulerAvoidsLaggyPath(t *testing.T) {
 		p.lastRx.Store(now)
 	}
 	fast.minRTT, fast.srtt = int64(10*time.Millisecond), int64(20*time.Millisecond)
+	fast.cwnd = 8 << 20 // an established path that has proven its capacity
 	laggy.minRTT, laggy.srtt = int64(25*time.Millisecond), int64(200*time.Millisecond)
 
 	used := map[uint8]int{}
@@ -210,9 +211,124 @@ func TestSchedulerAvoidsLaggyPath(t *testing.T) {
 	}
 
 	// Once the fast path is genuinely more backed up than the laggy one is
-	// slow, the laggy path helps out.
+	// slow (its measured RTT rises with its queue), the laggy path helps out.
 	fast.txBytes += 2 << 20
-	if p := e.pick(1444, now); p != laggy {
+	fast.srtt = int64(220 * time.Millisecond)
+	later := now + benchMax // past any time-out from the first half
+	for _, p := range []*Path{fast, laggy} {
+		p.lastRx.Store(later)
+		p.ackProgress = later
+	}
+	if p := e.pick(1444, later); p != laggy {
 		t.Fatal("laggy path not used when the fast path is heavily queued")
+	}
+}
+
+// A path that hasn't proven its capacity yet (a phone's weak uplink, say)
+// must not be handed a large burst just because its default rate estimate
+// and idle RTT make it look attractive: that burst would arrive late and
+// stall the whole in-order stream.
+func TestSchedulerLimitsUntestedPath(t *testing.T) {
+	e := NewEngine(1, nil, nil, 100*time.Millisecond)
+	now := Now()
+	fast, phone := e.Paths[0], e.Paths[1]
+	for _, p := range []*Path{fast, phone} {
+		p.Out = &memOut{}
+		p.lastRx.Store(now)
+	}
+	// Fast path: established, already somewhat queued.
+	fast.minRTT, fast.srtt, fast.cwnd = int64(12*time.Millisecond), int64(20*time.Millisecond), 8<<20
+	fast.txBytes = 400 << 10
+	// Phone: only pings so far, default (optimistic) rate estimate.
+	phone.minRTT, phone.srtt = int64(30*time.Millisecond), int64(60*time.Millisecond)
+
+	var phoneBytes int
+	for i := 0; i < 400; i++ {
+		p := e.pick(1444, now)
+		if p == phone {
+			phoneBytes += 1444
+		}
+		p.txBytes += 1444
+	}
+	if phoneBytes > 40<<10 {
+		t.Fatalf("untested path was handed %d KB before any of it was acknowledged", phoneBytes>>10)
+	}
+	if phoneBytes == 0 {
+		t.Fatal("untested path never probed")
+	}
+	t.Logf("untested path got %d KB of 400 packets", phoneBytes>>10)
+}
+
+// Quiet periods (little to send) must not lower a path's rate estimate, but a
+// busy path that delivers less must.
+func TestRateEstimateIgnoresIdleSamples(t *testing.T) {
+	p := &Path{rate: 30e6, cwnd: 1 << 20}
+	now := Now()
+	p.onFeedback(0, 0, 0, 0, 0, now) // starts the rate window
+	var rx uint64
+	us := int64(0)
+	for i := 0; i < 20; i++ { // 20 windows of 25 ms carrying only 1 KB each
+		rx += 1024
+		us += 25000
+		p.onFeedback(0, 0, rx, 0, us, now)
+	}
+	if p.rate < 29e6 {
+		t.Fatalf("idle samples dragged the rate down to %.1f MB/s", p.rate/1e6)
+	}
+	p.txBytes = 900 << 10 // now busy: plenty in flight, still delivering 1 KB/25 ms
+	for i := 0; i < 40; i++ {
+		rx += 1024
+		us += 25000
+		p.onFeedback(0, 0, rx, 0, us, now)
+	}
+	if p.rate > 5e6 {
+		t.Fatalf("busy but slow path kept a rate of %.1f MB/s", p.rate/1e6)
+	}
+}
+
+// A path far laggier than the best gets no data at all, sits out for a while
+// once it has been found laggy, and is used again after it recovers. If it is
+// the only path left, it still carries traffic.
+func TestSchedulerBenchesLaggyPath(t *testing.T) {
+	e := NewEngine(1, nil, nil, 100*time.Millisecond)
+	now := Now()
+	fast, phone := e.Paths[0], e.Paths[1]
+	for _, p := range []*Path{fast, phone} {
+		p.Out = &memOut{}
+		p.lastRx.Store(now)
+	}
+	fast.minRTT, fast.srtt, fast.cwnd = int64(12*time.Millisecond), int64(40*time.Millisecond), 8<<20
+	fast.txBytes = 300 << 10 // moderately queued: the phone's base cost would win
+	phone.minRTT, phone.srtt, phone.cwnd = int64(30*time.Millisecond), int64(400*time.Millisecond), 1<<20
+
+	for i := 0; i < 200; i++ {
+		if p := e.pick(1444, now); p == phone {
+			t.Fatal("laggy phone path got data")
+		}
+	}
+	// It recovers (pings now show 50 ms) but is still sitting out.
+	phone.srtt = int64(50 * time.Millisecond)
+	if p := e.pick(1444, now+int64(time.Second)); p == phone {
+		t.Fatal("benched path used before its time-out")
+	}
+	// After the time-out it is used again.
+	later := now + benchMin + int64(time.Second)
+	fast.lastRx.Store(later)
+	phone.lastRx.Store(later)
+	fast.ackProgress, phone.ackProgress = later, later // acks kept coming
+	used := false
+	for i := 0; i < 400 && !used; i++ {
+		p := e.pick(1444, later)
+		used = p == phone
+		p.txBytes += 1444
+	}
+	if !used {
+		t.Fatal("recovered path never used again")
+	}
+	// Only the laggy path left: it must carry traffic.
+	fast.lastRx.Store(0)
+	phone.srtt = int64(400 * time.Millisecond)
+	if p := e.pick(1444, later); p != phone {
+		t.Fatal("sole remaining path not used")
 	}
 }
