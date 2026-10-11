@@ -6,20 +6,15 @@ Normally Windows uses only one connection at a time. Bond splits your traffic
 across both and joins it back together on a small server you rent (a "VPS"),
 so one download can use the speed of both. It also includes an system wide **ad
 blocker** on your PC.
-
-Im paying for 1Gbps Download/Upload speeds to my internet provider but because my router is far from my computer i cannot run a ethernet cable.
-I was using a CPL Kit which was giving me 200-300Mbps and my pc has built in wifi so why cant i use both ?
-So i built Bond.
-You can use bond with any VPS you own or trust. Free or paid . 
-Just make sure you get a VPS with equal or bigger internet bandwith than your connections combined! 
-Also make sure the vps you are getting is close to you, otherwise latency might be a problem.
-Im using it on a oracle free vps running Ubuntu 24.04 ,
-with VM.Standard.A1.Flex shape, 2Cores, 12Gb ram , 40Gb storage and im getting 500-550Mbps speeds.
+Are you limited by your ethernet port speed ? Maybe cable speed ? Using a CPL Kit ? You are not using what your internet provider gives you ? 
+Then Bond is for you. Combine Wifi and Ethernet for faster bandwith!
+Tested on oracle free tier vps running Ubuntu 24.04 ,
+with VM.Standard.A1.Flex shape, 2Cores, 12Gb ram , 40Gb storage.
 
 ```
- Your PC ── WiFi ─────┐
-                      ├──▶  your vps server  ──▶  internet
- Your PC ── Ethernet ─┘
+ Your PC ─ WiFi (250Mbps)──────────┐
+                                   ├──▶  your vps server(250+300Mbps)  ──▶  internet (550Mbps)
+ Your PC ─ Ethernet(300Mbps)───────┘
 ```
 
 ---
