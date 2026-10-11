@@ -12,6 +12,7 @@ blocker** on your PC.
 Are you limited by your Ethernet port speed? Maybe cable speed? Using a CPL
 (powerline) kit? Not getting what your internet provider gives you?
 Then Bond is for you. Combine WiFi and Ethernet for faster bandwidth!
+You can also use your phone hotspot along with your wifi/ethernet.
 
 Tested on an Oracle free tier VPS running Ubuntu 24.04, with the
 VM.Standard.A1.Flex shape: 2 cores, 12 GB RAM, 40 GB storage.
