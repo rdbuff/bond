@@ -30,16 +30,16 @@ You need:
 
 - A **Windows 10 or 11** PC with two internet connections (for example WiFi
   *and* an Ethernet cable).
-- A **VPS**: a small rented Linux server. Bond runs its "relay" there.
-  Any provider works (Oracle Cloud has a free tier; Hetzner, DigitalOcean,
-  Vultr and others cost a few euros/dollars a month). Choose **Ubuntu** as the
-  operating system and a location **close to you**.
+- A **VPS**: a small rented Linux server.Oracle Cloud has a free tier; Hetzner, DigitalOcean,
+  Vultr and others cost a few euros/dollars a month.
 
+  
 ### Step 1: Install the relay on your server
 
 1. Open **PowerShell** on your PC (press the Windows key, type `PowerShell`,
    press Enter).
-2. Connect to your server. Replace the address with your server's IP
+   
+3. Connect to your server. Replace the address with your server's IP
    address, and `ubuntu` with your server's username (your provider shows
    both):
 
@@ -51,14 +51,14 @@ You need:
    gave you a **key file** instead of a password (Oracle does), add it like
    this: `ssh -i C:\Users\you\Downloads\ssh-key.key ubuntu@203.0.113.10`
 
-3. Copy this whole line, paste it into the window (right-click pastes) and
+4. Copy this whole line, paste it into the window (right-click pastes) and
    press Enter:
 
    ```
    curl -fsSL -o bond.tar.gz https://github.com/rdbuff/bond/releases/latest/download/bond-server-linux.tar.gz && tar -xzf bond.tar.gz && sudo sh bond-server/install.sh
    ```
 
-4. When it finishes, it shows something like this. **Keep this window open**,
+5. When it finishes, it shows something like this. **Keep this window open**,
    you need these two values in Step 3:
 
    ```
@@ -66,6 +66,7 @@ You need:
      Relay server: 203.0.113.10
      Server key:   q5T0...long text...k8=
    ```
+Copy the relay server and Server key and paste them on a new notepad
 
 ### Step 2: Open port 51820 on your provider's website
 
@@ -103,16 +104,24 @@ your server's address.
 
 ---
 
-## Using Bond
 
-- **Big switch**: turns bonding on and off.
-- **Ad blocker switch**: blocks ads and trackers in all apps and browsers. It
-  works even when the big switch is off.
-- **Gear icon** (top right): Settings. Change the server, choose which
-  connections to use, start Bond with Windows, and more.
-- **Closing the window**: Bond asks whether to keep running in the **system
-  tray** (the icons next to the clock) or quit. Right-click its tray icon for
-  quick switches and **Quit**.
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 ## Something's not working?
 
@@ -125,11 +134,26 @@ your server's address.
 | The internet is gone while Bond is on | If you enabled the **kill switch** in Settings, the internet is blocked until Bond connects. Switch Bond off to get it back. |
 | Not faster than before | Bond can't be faster than your two connections combined, or than the server's own internet speed. Choose a server close to you. |
 
+
 To uninstall: Windows Settings → Apps → **Bond** → Uninstall. To remove the
 relay from the server, run
 `sudo systemctl disable --now bond-server && sudo rm /usr/local/bin/bond-server`.
 
 ---
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 ## For advanced users
 
