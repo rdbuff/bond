@@ -332,3 +332,23 @@ func TestSchedulerBenchesLaggyPath(t *testing.T) {
 		t.Fatal("sole remaining path not used")
 	}
 }
+
+// minRTT must not jump to a loaded RTT when its 10 s window ends: it keeps
+// the lowest sample of the window just finished.
+func TestMinRTTKeepsLowestOfLastWindow(t *testing.T) {
+	p := &Path{}
+	ms := int64(time.Millisecond)
+	now := int64(time.Second)
+	p.rttSample(12*ms, now)
+	for i := 0; i < 30; i++ { // 15 s of loaded samples, a quiet one at 8 s
+		now += 500 * ms
+		rtt := 50 * ms
+		if i == 16 {
+			rtt = 13 * ms
+		}
+		p.rttSample(rtt, now)
+		if p.minRTT > 13*ms {
+			t.Fatalf("after %v minRTT jumped to %v", time.Duration(now), time.Duration(p.minRTT))
+		}
+	}
+}

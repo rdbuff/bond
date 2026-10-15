@@ -33,9 +33,12 @@ const (
 	initCwnd = 16 << 10
 	maxCwnd  = 64 << 20
 
-	// Paths more than 2x the best path's RTT plus lagSlack get no data, for
-	// benchMin doubling up to benchMax each time they are found laggy.
+	// Paths that spend most of lagHold more than 2x the best path's RTT plus
+	// lagSlack get no data, for benchMin doubling up to benchMax each time
+	// they are found laggy. Brief spikes (Wi-Fi airtime stalls) don't count:
+	// the cost model already steers around them.
 	lagSlack = int64(30 * time.Millisecond)
+	lagHold  = int64(time.Second)
 	benchMin = int64(5 * time.Second)
 	benchMax = int64(60 * time.Second)
 )
@@ -80,6 +83,7 @@ type Path struct {
 	srtt        int64
 	minRTT      int64
 	minRTTAt    int64
+	minRTTNext  int64   // lowest RTT since minRTTAt, becomes minRTT when the window ends
 	rate        float64 // delivered bytes/s
 	rateValid   bool
 	rateBytes   uint64
@@ -90,6 +94,8 @@ type Path struct {
 	benchUntil  int64  // no data before this (too laggy, see pick)
 	benchFor    int64
 	goodSince   int64
+	lagScore    int64 // time spent over the lag gate, minus half the time under it
+	lagAt       int64
 
 	// Receiver side, guarded by Engine.rxMu.
 	rxValid   bool
@@ -103,6 +109,7 @@ type Path struct {
 
 	StatTx, StatRx atomic.Uint64
 	StatOOO        atomic.Uint64 // data packets that arrived behind a later one on the same path
+	StatBench      atomic.Uint64 // times the path was benched for lag
 }
 
 func (p *Path) Alive(now int64) bool {
@@ -169,8 +176,20 @@ func (p *Path) rttSample(rtt, now int64) {
 	} else {
 		p.srtt += (rtt - p.srtt) / 8
 	}
-	if p.minRTT == 0 || rtt < p.minRTT || now-p.minRTTAt > int64(10*time.Second) {
-		p.minRTT, p.minRTTAt = rtt, now
+	// minRTT is the lowest RTT of the last 10-20 s. Restarting it from the
+	// current sample every 10 s made it jump to a loaded RTT (40-60 ms) on a
+	// busy path, which made the path look idle and drew a burst that
+	// overflowed it: a throughput dip every 10 s.
+	if p.minRTTNext == 0 || rtt < p.minRTTNext {
+		p.minRTTNext = rtt
+	}
+	if p.minRTT == 0 || rtt < p.minRTT {
+		p.minRTT = rtt
+	}
+	if p.minRTTAt == 0 {
+		p.minRTTAt = now
+	} else if now-p.minRTTAt > int64(10*time.Second) {
+		p.minRTT, p.minRTTNext, p.minRTTAt = p.minRTTNext, rtt, now
 	}
 }
 
@@ -180,7 +199,10 @@ func (p *Path) onFeedback(high, rxPkts uint32, rxBytes uint64, delayUs uint32, r
 	if p.txSeq-high <= ringSize && (!p.ackValid || int32(high-p.ackSeq) > 0) {
 		rec := p.ring[high&ringMask]
 		p.rttSample(now-rec.t-int64(delayUs)*1000, now)
-		if rec.cum > p.ackCum {
+		// Grow only while the window is actually in use: a window that grew
+		// past anything we send made every path look idle forever, so the rate
+		// estimate below stopped coming down after a burst.
+		if rec.cum > p.ackCum && p.txBytes-p.ackCum >= p.cwnd/2 {
 			p.cwnd = min(p.cwnd+(rec.cum-p.ackCum), maxCwnd)
 		}
 		p.ackValid, p.ackSeq, p.ackCum, p.ackProgress = true, high, rec.cum, now
@@ -202,7 +224,7 @@ func (p *Path) onFeedback(high, rxPkts uint32, rxBytes uint64, delayUs uint32, r
 		sample := float64(rxBytes-p.rateBytes) / float64(dt) * 1e6
 		switch {
 		case sample > p.rate:
-			p.rate += (sample - p.rate) / 2
+			p.rate += (sample - p.rate) / 4
 		case p.txBytes-p.ackCum >= p.cwnd/4:
 			// Only a busy path that still delivered less is slower. While a
 			// path has little to send its samples just measure our own
@@ -224,6 +246,8 @@ type PathStats struct {
 	SentUpTo, RxPkts uint32
 	TxBytes, RxBytes uint64
 	OOO              uint64
+	Bench            uint64
+	Benched          bool
 }
 
 func (p *Path) Stats(now int64) PathStats {
@@ -234,6 +258,7 @@ func (p *Path) Stats(now int64) PathStats {
 		RateBps: p.rate * 8, Inflight: p.txBytes - p.ackCum,
 		SentUpTo: p.fbHigh + 1, RxPkts: p.fbRxPkts,
 		TxBytes: p.StatTx.Load(), RxBytes: p.StatRx.Load(), OOO: p.StatOOO.Load(),
+		Bench: p.StatBench.Load(), Benched: now < p.benchUntil,
 	}
 }
 
@@ -282,10 +307,12 @@ func (e *Engine) pick(size int, now int64) *Path {
 			p.mu.Unlock()
 		}
 	}
-	// "Do no harm": since packets are delivered in order, a path much laggier
-	// than the best one stalls everything behind each packet it carries.
-	// Such a path gets no data (pings keep measuring it), and each time it
-	// turns out laggy again it sits out longer.
+	// "Do no harm": since packets are delivered in order, a path that stays
+	// much laggier than the best one stalls everything behind each packet it
+	// carries. Such a path gets no data (pings keep measuring it), and each
+	// time it turns out laggy again it sits out longer. Only sustained lag
+	// counts: a healthy Wi-Fi link stalls for tens of ms now and then, and
+	// benching it for that cost half the bonded throughput.
 	gate := 2*bestSRTT + lagSlack
 	var best, fallback *Path
 	bestCost, fallbackCost := math.Inf(1), math.Inf(1)
@@ -296,16 +323,25 @@ func (e *Engine) pick(size int, now int64) *Path {
 		p.mu.Lock()
 		c := p.cost(size, now, bestSRTT)
 		usable := true
-		switch {
-		case bestSRTT > 0 && p.srtt > gate:
-			if now >= p.benchUntil {
-				p.benchFor = min(max(2*p.benchFor, benchMin), benchMax)
-				p.benchUntil = now + p.benchFor
-			}
+		dt := min(now-p.lagAt, int64(50*time.Millisecond))
+		p.lagAt = now
+		if bestSRTT > 0 && p.srtt > gate {
+			p.lagScore += dt
 			p.goodSince = 0
-			usable = false
+		} else {
+			p.lagScore = max(p.lagScore-dt/2, 0)
+		}
+		switch {
 		case now < p.benchUntil:
 			usable = false
+		case p.lagScore >= lagHold:
+			p.benchFor = min(max(2*p.benchFor, benchMin), benchMax)
+			p.StatBench.Add(1)
+			p.benchUntil = now + p.benchFor
+			p.lagScore = 0
+			usable = false
+		case bestSRTT > 0 && p.srtt > gate:
+			// Laggy right now but not for long: cost() weighs it.
 		default:
 			if p.goodSince == 0 {
 				p.goodSince = now

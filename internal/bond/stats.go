@@ -55,9 +55,11 @@ func (m *Monitor) Report() string {
 		state := "up"
 		if !s.Alive {
 			state = "DOWN"
+		} else if s.Benched {
+			state = "lag"
 		}
-		fmt.Fprintf(&sb, "  %-9s %-4s tx %7.1f rx %7.1f Mbit/s  rtt %5.1f/%5.1f ms  rate %6.1f  infl %5d KB  loss %4.1f%%  ooo %d\n",
-			name, state, tx, rx, ms(s.SRTT), ms(s.MinRTT), s.RateBps/1e6, s.Inflight/1024, loss, s.OOO-pv.OOO)
+		fmt.Fprintf(&sb, "  %-9s %-4s tx %7.1f rx %7.1f Mbit/s  rtt %5.1f/%5.1f ms  rate %6.1f  infl %5d KB  loss %4.1f%%  ooo %d  bench %d\n",
+			name, state, tx, rx, ms(s.SRTT), ms(s.MinRTT), s.RateBps/1e6, s.Inflight/1024, loss, s.OOO-pv.OOO, s.Bench-pv.Bench)
 	}
 	late, skipped, fast, tmo, cur := m.E.ReorderStats()
 	ro := [4]uint64{late, skipped, fast, tmo}
